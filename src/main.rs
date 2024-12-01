@@ -1,5 +1,8 @@
+use clap::Parser;
 use rc5::cli::Cli;
 
 fn main() {
-    todo!();
+    let args = Cli::parse();
+
+    println!("{:?}", args);
 }

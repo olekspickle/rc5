@@ -1,7 +1,6 @@
-
 /// The length of a word in bits, typically 16, 32 or 64. Encryption is done in 2-word blocks.
 // pub(crate) const WORD_SIZE: u8 = 32;
-pub(crate) const W: u8 = 32;
+pub(crate) const W: u32 = 32;
 /// Number of rounds
 /// ROUNDS
 pub(crate) const R: u8 = 12;
@@ -33,8 +32,12 @@ pub(crate) const Q: WORD = 0x9e3779b9;
 struct Rotation(WORD, WORD);
 
 impl Rotation {
-    pub fn left(&mut self) {
-        self.x();
+    pub fn left(&mut self) -> u32 {
+        (self.x() << (self.y() & (W - 1))) | (self.x() >> (W - (self.y() & (W - 1))))
+    }
+
+    pub fn right(&mut self) -> u32 {
+        (self.x() >> (self.y() & (W - 1))) | (self.x() << (W - (self.y() & (W - 1))))
     }
 
     fn x(&self) -> WORD {

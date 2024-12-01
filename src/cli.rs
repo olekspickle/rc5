@@ -1,27 +1,28 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Parser)]
-struct Optians {
+struct Options {
     /// The text payload to work with
     #[arg(short, long)]
-    payload: String,
+    data: String,
 
     /// Encryption key byte sequence
     #[arg(short, long)]
     key: String,
 }
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    #[clap(flatten)]
-    opts: Optians,
-
     #[command(subcommand)]
     command: Commands,
+
+    #[clap(flatten)]
+    opts: Options,
+
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     /// Turn text into rc5 encoded payload
     Encrypt,

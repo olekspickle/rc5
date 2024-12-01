@@ -1,6 +1,7 @@
+//! RC5 Encryption implemented in Rust
 //!
 //! Rivest describes the rc5 cipher [here](https://www.grc.com/r&d/rc5.pdf)
-//! and includes a c reference implementation.
+//! and includes a C reference implementation.
 //! 
 //! For this test we implement rc5 in rust. Specifically rc5-32/12/16 
 //! TODO: expand and implement other versions of rc5 too if you wish. The test cases provided should pass. 
@@ -16,7 +17,7 @@ use constants::*;
  * This function should return a cipher text for a given key and plaintext
  *
  */
-fn encode(key: Vec<u8>, plaintext: Vec<u8>) -> Vec<u8> {
+pub fn encode(key: Vec<u8>, plaintext: Vec<u8>) -> Vec<u8> {
 	let mut ciphertext = Vec::new();
 	ciphertext
 }
@@ -25,7 +26,7 @@ fn encode(key: Vec<u8>, plaintext: Vec<u8>) -> Vec<u8> {
  * This function should return a plaintext for a given key and ciphertext
  *
  */
-fn decode(key: Vec<u8>, ciphertext: Vec<u8>) -> Vec<u8> {
+pub fn decode(key: Vec<u8>, ciphertext: Vec<u8>) -> Vec<u8> {
 	let mut plaintext = Vec::new();
 	plaintext
 }
