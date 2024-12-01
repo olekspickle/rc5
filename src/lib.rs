@@ -12,8 +12,8 @@
 //! u = w/8 and w = word size used for this particular instance of RC5.
 //!
 
-use rand::{distributions::Alphanumeric, Rng};
 use log::debug;
+use rand::{distributions::Alphanumeric, Rng};
 
 pub mod cli;
 
@@ -21,11 +21,11 @@ pub mod cli;
 const PHI: f32 = 1.618;
 
 /// Alias just to make sense of this algorithm
-type WORD = u64;
+type WORD = u32;
 
 pub struct Rc5 {
     /// The length of a word in bits, typically 16, 32 or 64. Encryption is done in 2-word blocks
-    w: usize,
+    w: WORD,
 
     /// w/8 - The length of a word in bytes
     u: usize,
@@ -69,22 +69,60 @@ impl Rc5 {
         (l, r)
     }
 
-    /// Expand key phase
-    fn expand_key(&self, key: &[u8]) -> Vec<u32> {
-        debug!("Expanding keys");
-        let mut s = vec![0; 2 * (self.r + 1)];
-        s[0] = self.pw();
-        for i in 1..s.len() {
-            s[i] = s[i - 1].wrapping_add(self.qw());
+    /// This function takes in a slice of bytes bytes and returns a vector of 32-bit unsigned integers words
+    /// that represent the secret key K. It does this by iterating over the bytes in bytes in groups of 4,
+    /// and for each group it converts the 4 bytes into a single word
+    /// by ORing together the values obtained by shifting each byte left by a certain number of bits.
+    fn bytes_to_words(bytes: &[u8]) -> Vec<u32> {
+        let mut words = Vec::new();
+
+        // Iterate over the bytes in groups of 4
+        for chunk in bytes.chunks(4) {
+            let mut word = 0;
+
+            // Convert each group of 4 bytes into a single word
+            for (i, &byte) in chunk.iter().enumerate() {
+                word |= (byte as u32) << (8 * i);
+            }
+
+            words.push(word);
         }
 
+        words
+    }
+
+
+    /// This function takes in a key bytes, and it returns the initialized sub-keys vector.
+    /// It does this by first initializing all elements in S to the value of the constant P,
+    /// and then performing a series of rotations and XORs on the elements of S and key.
+    fn initialize_subkeys(&self, key: &[u8]) -> Vec<u32> {
+        debug!("Initializing subkeys");
+        let mut l = Self::bytes_to_words(key);
+        let mut s = vec![0; 2 * (self.r + 1)];
+        let (p, q) = (self.pw(), self.qw());
+        debug!("P:{p}, Q:{q}");
+        s[0] = p;
+
+        for i in 1..(2 * (self.r + 1)) {
+            s[i] = s[i - 1].wrapping_add(q);
+        }
+
+        // Sub mixing keys
+        let mut a = 0;
+        let mut b = 0;
         let mut i = 0;
         let mut j = 0;
-        let v = 3 * std::cmp::max(key.len() as u32, s.len() as u32);
+        let v = 3 * std::cmp::max(l.len(), s.len());
+
         for _ in 0..v {
-            s[i] = s[i].wrapping_add(s[j]).rotate_left(3);
-            i = (i + 1) % s.len();
-            j = (j + 1) % s.len();
+            let left = self.left(s[i].wrapping_add(a).wrapping_add(b), 3);
+            let right = self.right((l[j] as u32).wrapping_add(a).wrapping_add(b), a.wrapping_add(b));
+            a = left;
+            s[i] = left;
+            b = left;
+            l[j] = right;
+            i = (i + 1) % (2 * (self.r + 1));
+            j = (j + 1) % l.len();
         }
 
         s
@@ -93,10 +131,11 @@ impl Rc5 {
     /// Returns a cipher text for a given key and plaintext
     pub fn encode(&mut self, key: &[u8], plaintext: &[u8]) -> Vec<u8> {
         debug!("Encoding");
-        let s = self.expand_key(key);
+        // let s = self.expand_key(key);
+        let s = self.initialize_subkeys(key);
         let mut ciphertext = Vec::with_capacity(plaintext.len());
 
-        for chunk in plaintext.chunks(self.w) {
+        for chunk in plaintext.chunks(self.w as usize) {
             let mut a = u32::from_le_bytes([0, 0, 0, 0]);
             let mut b = u32::from_le_bytes([0, 0, 0, 0]);
             let mut c = u32::from_le_bytes([0, 0, 0, 0]);
@@ -147,10 +186,10 @@ impl Rc5 {
 
     /// Returns a plaintext for a given key and ciphertext
     pub fn decode(&mut self, key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
-        let s = self.expand_key(key);
+        let s = self.initialize_subkeys(key);
         let mut plaintext = Vec::new();
 
-        for chunk in ciphertext.chunks(self.w) {
+        for chunk in ciphertext.chunks(self.w as usize) {
             let mut a = u32::from_le_bytes([0, 0, 0, 0]);
             let mut b = u32::from_le_bytes([0, 0, 0, 0]);
             let mut i = 0;
@@ -191,9 +230,9 @@ impl Rc5 {
     }
 
     /// Set word length and magic constants depending on it
-    pub fn w(mut self, w: usize) -> Self {
+    pub fn w(mut self, w: WORD) -> Self {
         self.w = w;
-        self.u = w / 8;
+        self.u = (w / 8) as usize;
         self
     }
 
@@ -240,6 +279,7 @@ impl Rc5 {
     }
 
     fn odd(&self, f: f32) -> u32 {
+        debug!("Touch odd");
         let f = match f {
             f if f.ceil() % 2.0 == 1.0 => f,
             f if f.floor() % 2.0 == 1.0 => f,
@@ -255,8 +295,8 @@ impl Rc5 {
     /// #define ROTL(x,y) (((x)<<(y&(w-1))) | ((x)>>(w-(y&(w-1)))))
     /// x : The number of cycles
     /// y : The number of bits that will be looped
-    pub fn left(&self, x: u32, y: u8) -> u32 {
-        (x << y) | (x >> (self.w as u8 - y))
+    pub fn left(&self, x: u32, y: WORD) -> u32 {
+        x.wrapping_shl(y) | x.wrapping_shl(self.w.wrapping_sub(y))
     }
 
     /// Cyclic right shift function
@@ -266,8 +306,8 @@ impl Rc5 {
     /// #define ROTR(x,y) (((x)>>(y&(w-1))) | ((x)<<(w-(y&(w-1)))))
     /// x : The number of cycles
     /// y : The number of bits that will be looped
-    pub fn right(&self, x: u32, y: u8) -> u32 {
-        (x >> y) | (x << (self.w as u8 - y))
+    pub fn right(&self, x: u32, y: WORD) -> u32 {
+        x.wrapping_shr(y) | x.wrapping_shr(self.w.wrapping_sub(y))
     }
 }
 
