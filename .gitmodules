@@ -1,0 +1,3 @@
+[submodule "c_impls/benedict_boyle"]
+	path = c_impls/benedict_boyle
+	url = git@github.com:BenedictBoyle/rc5.git
