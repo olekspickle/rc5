@@ -13,6 +13,7 @@
 //!
 
 use rand::{distributions::Alphanumeric, Rng};
+use log::debug;
 
 pub mod cli;
 
@@ -62,7 +63,7 @@ impl Rc5 {
             .collect()
     }
 
-    fn mix_subkeys(s: &[u32], mut l: u32, mut r: u32, mut i: usize) -> (u32, u32) {
+    fn mix_subkeys(s: &[u32], mut l: u32, mut r: u32, i: usize) -> (u32, u32) {
         l = l.wrapping_add(s[i]);
         r = r.wrapping_add(s[i + 1]);
         (l, r)
@@ -70,10 +71,11 @@ impl Rc5 {
 
     /// Expand key phase
     fn expand_key(&self, key: &[u8]) -> Vec<u32> {
+        debug!("Expanding keys");
         let mut s = vec![0; 2 * (self.r + 1)];
         s[0] = self.pw();
         for i in 1..s.len() {
-            s[i] = s[i - 1] + self.qw();
+            s[i] = s[i - 1].wrapping_add(self.qw());
         }
 
         let mut i = 0;
@@ -90,7 +92,7 @@ impl Rc5 {
 
     /// Returns a cipher text for a given key and plaintext
     pub fn encode(&mut self, key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-        let mut ciphertext: Vec<u8> = Vec::new();
+        debug!("Encoding");
         let s = self.expand_key(key);
         let mut ciphertext = Vec::with_capacity(plaintext.len());
 
@@ -102,6 +104,7 @@ impl Rc5 {
             let mut i = 0;
 
             match chunk.len() {
+                // optimization
                 8 => {
                     a = u32::from_le_bytes([chunk[3], chunk[2], chunk[1], chunk[0]]);
                     b = u32::from_le_bytes([chunk[7], chunk[6], chunk[5], chunk[4]]);
@@ -129,11 +132,15 @@ impl Rc5 {
                 r = r_new;
             }
 
+            debug!("Extending ciphertext");
+
             let mut block = Vec::new();
             block.extend_from_slice(&l.to_le_bytes());
             block.extend_from_slice(&r.to_le_bytes());
             ciphertext.extend(block);
         }
+
+        debug!("Encoded!");
 
         ciphertext
     }
@@ -267,18 +274,6 @@ impl Rc5 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // #[test]
-    // fn rotate_left() {
-    //     let mut rot = Rotation::new(1024, 8);
-    //     assert_eq!(rot.left(), 262144);
-    // }
-
-    // #[test]
-    // fn rotate_right() {
-    //     let mut rot = Rotation::new(1024, 8);
-    //     assert_eq!(rot.right(), 4);
-    // }
 
     #[test]
     fn encode_a() {

@@ -51,7 +51,7 @@ impl Cli {
                 info!("Using key:{}", String::from_utf8(key.clone()).unwrap());
 
                 let encoded = cypher.encode(&key, data.as_bytes());
-                info!("Encrypted data: {}", String::from_utf8(encoded)?);
+                info!("Encrypted data: {}", String::from_utf8_lossy(&encoded));
 
                 Ok(())
             }
@@ -61,7 +61,7 @@ impl Cli {
                 info!("Using key:{}", String::from_utf8(key.clone()).unwrap());
 
                 let decoded = cypher.decode(&key, data.as_bytes());
-                info!("Decrypted data: {}", String::from_utf8(decoded)?);
+                info!("Decrypted data: {}", String::from_utf8_lossy(&decoded));
 
                 Ok(())
             }
