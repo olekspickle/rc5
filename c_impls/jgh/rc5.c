@@ -35,11 +35,12 @@ void generateChildKey(unsigned char* KeyK,TWOBYTEINT* ChildKeyS);
 void Encipher(TWOBYTEINT* In,TWOBYTEINT* Out,TWOBYTEINT* S);
 void Decipher(TWOBYTEINT* In,TWOBYTEINT* Out,TWOBYTEINT* S);
 #define NoOfData  4
-/**2、循环移位函数
- 由于在生成子密钥，加密，解密过程中都要进行循环移位，故要首先定义循环以为函数。
- * 循环左移和右移函数
- * x : 被循环的数
- * y : 将要循环的位数
+/**2、Cyclic shift function 
+    Since the cycle shift is performed during the process of generating the subkey, 
+    encryption, and decryption, it is necessary to define the loop as a function first. 
+    Loop left and right shift functions 
+    x : The number of cycles
+    y : The number of bits that will be looped
  */
 #define ROTL(x,y) (((x)<<(y&(w-1))) | ((x)>>(w-(y&(w-1)))))
 #define ROTR(x,y) (((x)>>(y&(w-1))) | ((x)<<(w-(y&(w-1)))))

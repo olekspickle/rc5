@@ -4,7 +4,12 @@
 //! 
 //! For this test we implement rc5 in rust. Specifically rc5-32/12/16 
 //! TODO: expand and implement other versions of rc5 too if you wish. The test cases provided should pass. 
+//! 
 //! Further test cases can be found [here](https://datatracker.ietf.org/doc/html/draft-krovetz-rc6-rc5-vectors-00#section-4)
+
+mod constants;
+
+use constants::*;
 
 /*
  * This function should return a cipher text for a given key and plaintext
