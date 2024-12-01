@@ -12,6 +12,8 @@
 //! u = w/8 and w = word size used for this particular instance of RC5.
 //!
 
+use rand::{distributions::Alphanumeric, Rng};
+
 pub mod cli;
 
 /// Golden ratio
@@ -61,8 +63,11 @@ impl Default for Rc5 {
 
 impl Rc5 {
     /// Generate random cipher key
-    pub fn key() -> Vec<u8> {
-        todo!()
+    pub fn key(&self, length: usize) -> Vec<u8> {
+        rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(length)
+            .collect()
     }
 
     /// Setup phase
