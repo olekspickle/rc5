@@ -2,7 +2,6 @@
 [files]
 extend-exclude = [
     # Exclude generated files that are checked in to source control
-    "package-lock.json",
     "Cargo.lock",
     ".github/workflows",
 ]
