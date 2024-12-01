@@ -24,25 +24,19 @@ type WORD = u64;
 
 pub struct Rc5 {
     /// The length of a word in bits, typically 16, 32 or 64. Encryption is done in 2-word blocks
-    w: u8,
+    w: usize,
 
     /// w/8 - The length of a word in bytes
-    u: u8,
+    u: usize,
 
     /// The length of the key in bytes
-    b: u8,
+    b: usize,
 
     /// Size of table S = 2*(r+1) words
     t: u64,
 
-    /// Key bytes
-    subkeys: Vec<u8>,
-
-    /// key word count = ceil(8*b/w)
-    c: u8,
-
     /// Number of rounds
-    r: u8,
+    r: usize,
 }
 
 impl Default for Rc5 {
@@ -53,8 +47,6 @@ impl Default for Rc5 {
             b: 16,
             r: 0,
             t: 0,
-            subkeys: vec![],
-            c: 4,
         }
         .w(32)
         .r(12)
@@ -70,97 +62,160 @@ impl Rc5 {
             .collect()
     }
 
-    /// Setup phase
-    pub fn setup(&mut self, key: &[u8]) -> Vec<u64> {
-        // Word count in mix key list
-        let c: usize = (u8::max(self.b, 1) / self.u).into();
-        let mut list: Vec<u64> = vec![0; c];
+    fn mix_subkeys(s: &[u32], mut l: u32, mut r: u32, mut i: usize) -> (u32, u32) {
+        l = l.wrapping_add(s[i]);
+        r = r.wrapping_add(s[i + 1]);
+        (l, r)
+    }
 
-        // 1. Break key into words
-        // L is initially a c-length list of 0-valued w-length words
-        // TODO: rewrite this C bullshit to some decent Rust?..
-        for i in self.b..0 {
-            let index = (i / self.u) as usize;
-            list[index] = (list[index] << 8) + key[i as usize] as u64;
+    /// Expand key phase
+    fn expand_key(&self, key: &[u8]) -> Vec<u32> {
+        let mut s = vec![0; 2 * (self.r + 1)];
+        s[0] = self.pw();
+        for i in 1..s.len() {
+            s[i] = s[i - 1] + self.qw();
         }
 
-        // 2. Initialize key-independent pseudorandom S array
-        // TODO: rewrite this C bullshit to some decent Rust?..
-        // S is initially a t=2(r+1) length list of undefined w-length words
-        let mut list_s = vec![0; self.t as usize];
-        list_s[0] = self.pw();
-
-        for i in 1..self.t {
-            let i = i as usize;
-            list_s[i] = list_s[i - 1] + self.qw();
+        let mut i = 0;
+        let mut j = 0;
+        let v = 3 * std::cmp::max(key.len() as u32, s.len() as u32);
+        for _ in 0..v {
+            s[i] = s[i].wrapping_add(s[j]).rotate_left(3);
+            i = (i + 1) % s.len();
+            j = (j + 1) % s.len();
         }
 
-        // Sub-key mixing
-        // TODO: rewrite this C bullshit to some decent Rust?..
-        let (mut i, mut j) = (0, 0);
-        let (mut a, b) = (0, 0);
-        for _ in 0..3 * usize::max(self.t as usize, c) {
-            list_s[i] = (list_s[i] + a + b) << 3;
-            a = list_s[i];
-
-            list[j] = (list[j] + a + b) << (a + b);
-            a = list[j];
-
-            i = (i + 1) % self.t as usize;
-            j = (j + 1) % c;
-        }
-
-        list_s
+        s
     }
 
     /// Returns a cipher text for a given key and plaintext
     pub fn encode(&mut self, key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-        let mut ciphertext = Vec::new();
-        let setup = self.setup(&key);
+        let mut ciphertext: Vec<u8> = Vec::new();
+        let s = self.expand_key(key);
+        let mut ciphertext = Vec::with_capacity(plaintext.len());
+
+        for chunk in plaintext.chunks(self.w) {
+            let mut a = u32::from_le_bytes([0, 0, 0, 0]);
+            let mut b = u32::from_le_bytes([0, 0, 0, 0]);
+            let mut c = u32::from_le_bytes([0, 0, 0, 0]);
+            let mut d = u32::from_le_bytes([0, 0, 0, 0]);
+            let mut i = 0;
+
+            match chunk.len() {
+                8 => {
+                    a = u32::from_le_bytes([chunk[3], chunk[2], chunk[1], chunk[0]]);
+                    b = u32::from_le_bytes([chunk[7], chunk[6], chunk[5], chunk[4]]);
+                }
+                _ => {
+                    for &x in chunk {
+                        match i {
+                            0 => a = a | (x as u32),
+                            1 => b = b | (x as u32),
+                            2 => c = c | (x as u32),
+                            3 => d = d | (x as u32),
+                            _ => (),
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            let mut l = a;
+            let mut r = b;
+
+            for i in 0..self.r {
+                let (l_new, r_new) = Self::mix_subkeys(&s, l, r, i * 2);
+                l = l_new;
+                r = r_new;
+            }
+
+            let mut block = Vec::new();
+            block.extend_from_slice(&l.to_le_bytes());
+            block.extend_from_slice(&r.to_le_bytes());
+            ciphertext.extend(block);
+        }
+
         ciphertext
     }
 
     /// Returns a plaintext for a given key and ciphertext
     pub fn decode(&mut self, key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
+        let s = self.expand_key(key);
         let mut plaintext = Vec::new();
-        todo!();
+
+        for chunk in ciphertext.chunks(self.w) {
+            let mut a = u32::from_le_bytes([0, 0, 0, 0]);
+            let mut b = u32::from_le_bytes([0, 0, 0, 0]);
+            let mut i = 0;
+
+            match chunk.len() {
+                8 => {
+                    a = u32::from_le_bytes([chunk[3], chunk[2], chunk[1], chunk[0]]);
+                    b = u32::from_le_bytes([chunk[7], chunk[6], chunk[5], chunk[4]]);
+                }
+                _ => {
+                    for &x in chunk {
+                        match i {
+                            0 => a = a | (x as u32),
+                            1 => b = b | (x as u32),
+                            _ => (),
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            let mut l = b;
+            let mut r = a;
+
+            for i in (0..self.r).rev() {
+                let (l_new, r_new) = Self::mix_subkeys(&s, l, r, i * 2);
+                l = l_new;
+                r = r_new;
+            }
+
+            let mut block = Vec::new();
+            block.extend_from_slice(&l.to_le_bytes());
+            block.extend_from_slice(&r.to_le_bytes());
+            plaintext.extend(block);
+        }
+
         plaintext
     }
 
     /// Set word length and magic constants depending on it
-    pub fn w(mut self, w: u8) -> Self {
+    pub fn w(mut self, w: usize) -> Self {
         self.w = w;
         self.u = w / 8;
         self
     }
 
     /// Set round count and table size depending on it
-    pub fn r(mut self, r: u8) -> Self {
+    pub fn r(mut self, r: usize) -> Self {
         self.r = r;
         self.t = 2 * (r as u64 + 1);
         self
     }
 
     /// Set length of a key
-    pub fn b(mut self, b: u8) -> Self {
+    pub fn b(mut self, b: usize) -> Self {
         self.b = b;
         self
     }
 
-    /// Set length of a key
-    pub fn c(mut self, b: u8) -> Self {
-        self.b = b;
-        self
+    /// Get word count in key
+    pub fn c(&self) -> usize {
+        (usize::max(self.b, 1) / self.u).into()
     }
 
     /// The first magic constant, defined as Odd((e-2)*2^{w}),
     /// where Odd is the nearest odd integer to the given input, e is the base of the natural logarithm,
     /// and w is defined above. For common values of w, the associated values of Pw are given here in hexadecimal
-    fn pw(&self) -> u64 {
+    fn pw(&self) -> u32 {
         match self.w {
             16 => 0xB7E1,
             32 => 0xB7E15163,
-            64 => 0xB7E151628AED2A6B,
+            // 64 => 0xB7E151628AED2A6B,
             _ => self.odd((std::f32::consts::E - 2.0) * 2.0f32.powf(self.w as f32)),
         }
     }
@@ -168,22 +223,22 @@ impl Rc5 {
     /// The second magic constant, defined as Odd((\phi - 1) * 2^w),
     /// where Odd is the nearest odd integer to the given input, where ϕ \phi is the golden ratio,
     /// and w is defined above. For common values of w, the associated values of Qw are given here in hexadecimal:
-    fn qw(&self) -> u64 {
+    fn qw(&self) -> u32 {
         match self.w {
             16 => 0x9E37,
             32 => 0x9E3779B9,
-            64 => 0x9E3779B97F4A7C15,
+            // 64 => 0x9E3779B97F4A7C15,
             _ => self.odd((PHI - 1.0) * 2.0f32.powf(self.w as f32)),
         }
     }
 
-    fn odd(&self, f: f32) -> u64 {
+    fn odd(&self, f: f32) -> u32 {
         let f = match f {
             f if f.ceil() % 2.0 == 1.0 => f,
             f if f.floor() % 2.0 == 1.0 => f,
             _ => panic!("No odd number on both sides"),
         };
-        f as u64
+        f as u32
     }
 
     /// Cyclic left shift function
@@ -193,9 +248,8 @@ impl Rc5 {
     /// #define ROTL(x,y) (((x)<<(y&(w-1))) | ((x)>>(w-(y&(w-1)))))
     /// x : The number of cycles
     /// y : The number of bits that will be looped
-    pub fn left(&mut self, w: u64, n: u64) -> u64 {
-        // (self.x << (self.y & (w - 1))) | (self.x >> (w - (self.y & (w - 1))))
-        todo!();
+    pub fn left(&self, x: u32, y: u8) -> u32 {
+        (x << y) | (x >> (self.w as u8 - y))
     }
 
     /// Cyclic right shift function
@@ -205,9 +259,8 @@ impl Rc5 {
     /// #define ROTR(x,y) (((x)>>(y&(w-1))) | ((x)<<(w-(y&(w-1)))))
     /// x : The number of cycles
     /// y : The number of bits that will be looped
-    pub fn right(&mut self, w: u64, n: u64) -> u64 {
-        // (self.x >> (self.y & (w - 1))) | (self.x << (w - (self.y & (w - 1))))
-        todo!();
+    pub fn right(&self, x: u32, y: u8) -> u32 {
+        (x >> y) | (x << (self.w as u8 - y))
     }
 }
 

@@ -28,14 +28,14 @@ enum Commands {
     },
 
     /// Turn text into rc5 encoded payload
-    Encrypt {
+    Encode {
         /// The text payload to work with
         #[arg(short, long)]
         data: String,
     },
 
     /// Decode rc5 encoded payload
-    Decrypt {
+    Decode {
         /// The text payload to work with
         #[arg(short, long)]
         data: String,
@@ -45,7 +45,7 @@ enum Commands {
 impl Cli {
     pub fn run(self) -> anyhow::Result<()> {
         match self.command {
-            Commands::Encrypt { data } => {
+            Commands::Encode { data } => {
                 let mut cypher = Rc5::default();
                 let key = self.opts.key.unwrap_or(cypher.key(16));
                 info!("Using key:{}", String::from_utf8(key.clone()).unwrap());
@@ -55,7 +55,7 @@ impl Cli {
 
                 Ok(())
             }
-            Commands::Decrypt { data } => {
+            Commands::Decode { data } => {
                 let mut cypher = Rc5::default();
                 let key = self.opts.key.unwrap_or(cypher.key(16));
                 info!("Using key:{}", String::from_utf8(key.clone()).unwrap());
