@@ -1,4 +1,3 @@
-use std::mem;
 
 /// The length of a word in bits, typically 16, 32 or 64. Encryption is done in 2-word blocks.
 // pub(crate) const WORD_SIZE: u8 = 32;
@@ -35,7 +34,7 @@ struct Rotation(WORD, WORD);
 
 impl Rotation {
     pub fn left(&mut self) {
-        self.x()
+        self.x();
     }
 
     fn x(&self) -> WORD {

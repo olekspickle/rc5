@@ -8,6 +8,7 @@
 //! Further test cases can be found [here](https://datatracker.ietf.org/doc/html/draft-krovetz-rc6-rc5-vectors-00#section-4)
 
 mod constants;
+pub mod cli;
 
 use constants::*;
 
