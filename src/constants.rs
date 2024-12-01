@@ -29,6 +29,7 @@ pub(crate) const Q: WORD = 0x9e3779b9;
 /// y : The number of bits that will be looped
 /// #define ROTL(x,y) (((x)<<(y&(w-1))) | ((x)>>(w-(y&(w-1)))))
 /// #define ROTR(x,y) (((x)>>(y&(w-1))) | ((x)<<(w-(y&(w-1)))))
+#[derive(Default)]
 struct Rotation(WORD, WORD);
 
 impl Rotation {
@@ -46,5 +47,22 @@ impl Rotation {
 
     fn y(&self) -> WORD {
         self.1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotate_left() {
+        let mut rot = Rotation(1024, 8);
+        assert_eq!(rot.left(), 262144);
+    }
+
+    #[test]
+    fn rotate_right() {
+        let mut rot = Rotation(1024, 8);
+        assert_eq!(rot.right(), 4);
     }
 }
