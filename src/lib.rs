@@ -41,16 +41,6 @@ pub struct Rc5 {
 
     /// Number of rounds
     r: u8,
-
-    /// The first magic constant, defined as Odd((e-2)*2^{w}),
-    /// where Odd is the nearest odd integer to the given input, e is the base of the natural logarithm,
-    /// and w is defined above. For common values of w, the associated values of Pw are given here in hexadecimal
-    pw: u64,
-
-    /// The second magic constant, defined as Odd((\phi - 1) * 2^w),
-    /// where Odd is the nearest odd integer to the given input, where ϕ \phi is the golden ratio,
-    /// and w is defined above. For common values of w, the associated values of Qw are given here in hexadecimal:
-    qw: u64,
 }
 
 impl Default for Rc5 {
@@ -63,8 +53,6 @@ impl Default for Rc5 {
             t: 0,
             subkeys: vec![],
             c: 4,
-            pw: 0,
-            qw: 0,
         }
         .w(32)
         .r(12)
@@ -77,20 +65,60 @@ impl Rc5 {
         todo!()
     }
 
-    /// Returns a cipher text for a given key and plaintext
-    pub fn encode(&self, key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-        let mut ciphertext = Vec::new();
+    /// Setup phase
+    pub fn setup(&mut self, key: &[u8]) -> Vec<u64> {
+        // Word count in mix key list
         let c: usize = (u8::max(self.b, 1) / self.u).into();
-        let mut list = vec![0; c];
-        
+        let mut list: Vec<u64> = vec![0; c];
 
+        // 1. Break key into words
+        // L is initially a c-length list of 0-valued w-length words
+        // TODO: rewrite this C bullshit to some decent Rust?..
+        for i in self.b..0 {
+            let index = (i / self.u) as usize;
+            list[index] = (list[index] << 8) + key[i as usize] as u64;
+        }
+
+        // 2. Initialize key-independent pseudorandom S array
+        // TODO: rewrite this C bullshit to some decent Rust?..
+        // S is initially a t=2(r+1) length list of undefined w-length words
+        let mut list_s = vec![0; self.t as usize];
+        list_s[0] = self.pw();
+
+        for i in 1..self.t {
+            let i = i as usize;
+            list_s[i] = list_s[i - 1] + self.qw();
+        }
+
+        // Sub-key mixing
+        // TODO: rewrite this C bullshit to some decent Rust?..
+        let (mut i, mut j) = (0, 0);
+        let (mut a, b) = (0, 0);
+        for _ in 0..3 * usize::max(self.t as usize, c) {
+            list_s[i] = (list_s[i] + a + b) << 3;
+            a = list_s[i];
+
+            list[j] = (list[j] + a + b) << (a + b);
+            a = list[j];
+
+            i = (i + 1) % self.t as usize;
+            j = (j + 1) % c;
+        }
+
+        list_s
+    }
+
+    /// Returns a cipher text for a given key and plaintext
+    pub fn encode(&mut self, key: &[u8], plaintext: &[u8]) -> Vec<u8> {
+        let mut ciphertext = Vec::new();
+        let setup = self.setup(&key);
         ciphertext
     }
 
     /// Returns a plaintext for a given key and ciphertext
-    pub fn decode(&self, key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
+    pub fn decode(&mut self, key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
         let mut plaintext = Vec::new();
-
+        todo!();
         plaintext
     }
 
@@ -98,8 +126,6 @@ impl Rc5 {
     pub fn w(mut self, w: u8) -> Self {
         self.w = w;
         self.u = w / 8;
-        self.refresh_pw();
-        self.refresh_qw();
         self
     }
 
@@ -122,6 +148,9 @@ impl Rc5 {
         self
     }
 
+    /// The first magic constant, defined as Odd((e-2)*2^{w}),
+    /// where Odd is the nearest odd integer to the given input, e is the base of the natural logarithm,
+    /// and w is defined above. For common values of w, the associated values of Pw are given here in hexadecimal
     fn pw(&self) -> u64 {
         match self.w {
             16 => 0xB7E1,
@@ -131,6 +160,9 @@ impl Rc5 {
         }
     }
 
+    /// The second magic constant, defined as Odd((\phi - 1) * 2^w),
+    /// where Odd is the nearest odd integer to the given input, where ϕ \phi is the golden ratio,
+    /// and w is defined above. For common values of w, the associated values of Qw are given here in hexadecimal:
     fn qw(&self) -> u64 {
         match self.w {
             16 => 0x9E37,
@@ -147,16 +179,6 @@ impl Rc5 {
             _ => panic!("No odd number on both sides"),
         };
         f as u64
-    }
-
-    fn refresh_pw(&mut self) {
-        let pw = self.pw();
-        self.pw = pw;
-    }
-
-    fn refresh_qw(&mut self) {
-        let qw = self.qw();
-        self.qw = qw;
     }
 
     /// Cyclic left shift function
@@ -208,7 +230,7 @@ mod tests {
         ];
         let pt = vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77];
         let ct = vec![0x2D, 0xDC, 0x14, 0x9B, 0xCF, 0x08, 0x8B, 0x9E];
-        let rc5 = Rc5::default();
+        let mut rc5 = Rc5::default();
         let encoded = rc5.encode(&key, &pt);
 
         assert!(&ct[..] == &encoded[..]);
@@ -222,7 +244,7 @@ mod tests {
         ];
         let pt = vec![0xEA, 0x02, 0x47, 0x14, 0xAD, 0x5C, 0x4D, 0x84];
         let ct = vec![0x11, 0xE4, 0x3B, 0x86, 0xD2, 0x31, 0xEA, 0x64];
-        let rc5 = Rc5::default();
+        let mut rc5 = Rc5::default();
         let encoded = rc5.encode(&key, &pt);
 
         assert!(&ct[..] == &encoded[..]);
@@ -236,7 +258,7 @@ mod tests {
         ];
         let pt = vec![0x96, 0x95, 0x0D, 0xDA, 0x65, 0x4A, 0x3D, 0x62];
         let ct = vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77];
-        let rc5 = Rc5::default();
+        let mut rc5 = Rc5::default();
         let decoded = rc5.decode(&key, &ct);
 
         assert!(&pt[..] == &decoded[..]);
@@ -250,7 +272,7 @@ mod tests {
         ];
         let pt = vec![0x63, 0x8B, 0x3A, 0x5E, 0xF7, 0x2B, 0x66, 0x3F];
         let ct = vec![0xEA, 0x02, 0x47, 0x14, 0xAD, 0x5C, 0x4D, 0x84];
-        let rc5 = Rc5::default();
+        let mut rc5 = Rc5::default();
         let decoded = rc5.decode(&key, &ct);
         assert!(&pt[..] == &decoded[..]);
     }

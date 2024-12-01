@@ -41,7 +41,7 @@ impl Cli {
     pub fn run(self) -> anyhow::Result<()> {
         match self.command {
             Commands::Encrypt => {
-                let rc5 = Rc5::default();
+                let mut rc5 = Rc5::default();
                 let encoded = rc5.encode(self.opts.key.as_bytes(), self.opts.data.as_bytes());
                 let str =
                     String::from_utf8(encoded).expect("Failed to convert encoded bytes to string");
@@ -50,7 +50,7 @@ impl Cli {
                 Ok(())
             }
             Commands::Decrypt => {
-                let rc5 = Rc5::default();
+                let mut rc5 = Rc5::default();
                 let decoded = rc5.decode(self.opts.key.as_bytes(), self.opts.data.as_bytes());
                 let str =
                     String::from_utf8(decoded).expect("Failed to convert decoded bytes to string");
